@@ -6,6 +6,7 @@ import os
 import scipy.io
 from scipy.signal import stft, istft
 
+
 def sine_wave(seq_length=64, num_samples=28*5*100, num_signals=1,
         freq_low=1, freq_high=5, amplitude_low = 0.1, amplitude_high=0.9, **kwargs):
     ix = np.arange(seq_length) + 1
@@ -115,6 +116,90 @@ def get_batch_signal(data_params,data_list,data_path,start_index,end_index):
 
 
 
+def read_one_signal(temp_file,ch = 'ap'):
+    '''
+    this function is used for reading one signal only
+    
+    input:
+        temp_file: the name of just one mat file
+        data_folder: the folder contains the file
+        
+    output:
+        the output signal
+    '''
+    
+    
+    if not os.path.exists(temp_file):
+        raise FileNotFoundError('where is %s'%temp_file)
+    
+    temp_signal = scipy.io.loadmat(temp_file,mat_dtype=True)
+    file_key = os.path.splitext(os.path.split(temp_file)[1])[0]
+    temp_signal = temp_signal[file_key]
+    temp_signal = temp_signal.T
+    
+    if ch == 'ap':
+        
+        return temp_signal[:,1]
+    else:
+        #write something for the whole signal
+        pass
 
+def singal_padding(x,max_len = 8192):
+    '''
+    x should be in the form of [data,ch]
+    '''
+    
+    d = len(np.shape(x)) # check dimension
+    if d == 2:
+        temp = np.zeros([max_len,np.shape(x)[1]],dtype=np.float32)
+        # and then write your own code
+        pass
+    elif d == 1:
+        temp = np.zeros(max_len,dtype=np.float32)
+        temp[0:len(x)] = x
+        return temp
+    
+def stft_single(x,data_params):
+    
+    nperseg = data_params['nperseg']
+    noverlap = data_params['noverlap']
+    _,_,Zxx = stft(x,window='hann',nperseg=nperseg,noverlap=noverlap,return_onesided=True,boundary='zeros',padded=True)
+    
+    Zxx = Zxx[:128,:128]
+    return np.abs(Zxx),np.angle(Zxx)/np.pi
 
+def file2stft(file_name,data_params):
+    
+    '''
+    one file name to one pair of stft
+    '''
 
+    temp_signal = read_one_signal(file_name)
+    temp_signal = singal_padding(temp_signal)
+    
+    zm,zp = stft_single(temp_signal,data_params)
+    
+    return zm,zp
+
+def get_real_data(file_ls,data_params): 
+    total_zm = []
+    total_zp = []
+    
+    for temp_file in file_ls:
+        zm,zp = file2stft(temp_file,data_params)
+        
+        total_zm.append(zm)
+        total_zp.append(zp)
+        
+    total_zm = np.array(total_zm)
+    total_zp = np.array(total_zp)
+        
+    temp = np.log10(total_zm+1e-7)
+    smax = np.max(temp)
+    smin = np.min(temp)
+    
+    new_total_zm = (((temp-smin)/(smax-smin))-0.5)*2
+    
+    real_data = np.stack([new_total_zm,total_zp],-1)
+    
+    return real_data,smax,smin
